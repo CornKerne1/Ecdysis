@@ -11,6 +11,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "MotionControllerComponent.h"
 #include "XRMotionControllerBase.h" // for FXRMotionControllerBase::RightHandSourceId
+#include "Kismet/KismetMathLibrary.h"
+#include "Misc/App.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogFPChar, Warning, All);
@@ -133,6 +135,9 @@ void AEcdysisCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerI
 
 	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &AEcdysisCharacter::Sprint);
 	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &AEcdysisCharacter::StopSprint);
+
+	PlayerInputComponent->BindAction("ADS", IE_Pressed, this, &AEcdysisCharacter::OnPressADS);
+	PlayerInputComponent->BindAction("ADS", IE_Released, this, &AEcdysisCharacter::OnReleaseADS);
 	
 	// We have 2 versions of the rotation bindings to handle different kinds of devices differently
 	// "turn" handles devices that provide an absolute delta, such as a mouse.
@@ -175,60 +180,51 @@ void AEcdysisCharacter::StopFire()
 
 void AEcdysisCharacter::Sprint()
 {
-	movementType = movementType + 1;
-	HandleGroundMovementType();
-	switch (movementType)
+	if (auto playerMovement = GetCharacterMovement())
 	{
-	case 0://Walk
-		GetCharacterMovement()->MaxWalkSpeed = walkSpeed;
-		GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
-		if (!CheckStamina() || currentStamina < maxStamina)
+		movementType = movementType + 1;
+		HandleGroundMovementType();
+		switch (movementType)
 		{
-			GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaIncrease, this, &AEcdysisCharacter::IncreaseStamina, 1, true);
-		}
-		break;
-	case 1://SuperSprint
-		if (CheckStamina() && currentStamina > 0.75f * maxStamina)
-		{
-			GetCharacterMovement()->MaxWalkSpeed = supersprintSpeed;
-			staminaReduceRate = staminaReduceRateSupersprint;
-			GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaIncrease);
+		case 0://Walk
+			GetCharacterMovement()->MaxWalkSpeed = walkSpeed;
 			GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
-			GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaDecrease, this, &AEcdysisCharacter::ReduceStamina, 1, true);
+			if (!CheckStamina() || currentStamina < maxStamina)
+			{
+				GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaIncrease, this, &AEcdysisCharacter::IncreaseStamina, 1, true);
+			}
+			break;
+		case 1://SuperSprint
+			if (CheckStamina() && currentStamina > 0.75f * maxStamina)
+			{
+				GetCharacterMovement()->MaxWalkSpeed = supersprintSpeed;
+				staminaReduceRate = staminaReduceRateSupersprint;
+				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaIncrease);
+				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+				GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaDecrease, this, &AEcdysisCharacter::ReduceStamina, 1, true);
+			}
+			else
+				Sprint();
+			break;
+		case 2://Sprint
+			if (CheckStamina())
+			{
+				GetCharacterMovement()->MaxWalkSpeed = sprintSpeed;
+				staminaReduceRate = staminaReduceRateSprint;
+				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaIncrease);
+				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+				GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaDecrease, this, &AEcdysisCharacter::ReduceStamina, 1, true);
+			}
+			else
+				Sprint();
+			break;
 		}
-		else
-			Sprint();
-		break;
-	case 2://Sprint
-		if (CheckStamina())
-		{
-			GetCharacterMovement()->MaxWalkSpeed = sprintSpeed;
-			staminaReduceRate = staminaReduceRateSprint;
-			GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaIncrease);
-			GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
-			GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaDecrease, this, &AEcdysisCharacter::ReduceStamina, 1, true);
-		}
-		else
-			Sprint();
-		break;
-
 	}
-
 }
 
 void AEcdysisCharacter::StopSprint()
 {
 	//GetCharacterMovement()->MaxWalkSpeed = walkSpeed;
-}
-
-void AEcdysisCharacter::SuperSprint()
-{
-	GetCharacterMovement()->MaxWalkSpeed = supersprintSpeed;
-}
-
-void AEcdysisCharacter::StopSuperSprint()
-{
-	//GetCharacterMovement()->MaxWalkSpeed = sprintSpeed;
 }
 
 void AEcdysisCharacter::ReduceStamina()
@@ -267,6 +263,100 @@ void AEcdysisCharacter::HandleGroundMovementType()
 		movementType = 0;
 	}
 	
+}
+
+void AEcdysisCharacter::OnPressADS()
+{
+	if (adsToggle)
+	{
+		if (isADS)
+		{
+			CancelADS();
+		}
+		else
+		{
+			PerformADS();
+		}
+	}
+	PerformADS();
+}
+
+void AEcdysisCharacter::PerformADS()
+{
+	if (!noADS)
+	{
+		GetWorldTimerManager().SetTimer(TimerHandle_HandleAdsZoomIn, this, &AEcdysisCharacter::HandleZoomIn, .02f, true);
+	}
+}
+
+void AEcdysisCharacter::OnReleaseADS()
+{
+	if (!adsToggle)
+	{
+		//CancelADS();
+	}
+}
+
+void AEcdysisCharacter::CancelADS()
+{
+		if(isADS)
+		{
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleAdsZoomOut, this, &AEcdysisCharacter::HandleZoomOut, .02f, true);
+		}
+}
+
+void AEcdysisCharacter::HandleZoomIn()
+{	
+	if(!isADS)
+	{
+		if (auto fpCam = GetFirstPersonCameraComponent())
+		{
+			if (fpCam->FieldOfView == fovADS)
+			{
+				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+				isADS = true;
+			}
+			else
+			{
+				fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, fovADS, adsZoomSpeed));
+			}
+		}
+	}
+}
+
+void AEcdysisCharacter::HandleZoomOut()
+{
+
+	if (isADS)
+	{
+		if (auto fpCam = GetFirstPersonCameraComponent())
+		{
+			if (fpCam->FieldOfView == playerFOV)
+			{
+				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+				isADS = false;
+			}
+			else
+			{
+				fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, playerFOV, adsZoomSpeed));
+			}
+		}
+	}
+	else
+	{
+		if (auto fpCam = GetFirstPersonCameraComponent())
+		{
+			if (fpCam->FieldOfView == fovADS)
+			{
+				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+				isADS = true;
+			}
+			else
+			{
+				fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, fovADS, adsZoomSpeed));
+			}
+		}
+	}
 }
 
 void AEcdysisCharacter::OnFire()

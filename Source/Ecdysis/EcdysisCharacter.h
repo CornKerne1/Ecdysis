@@ -57,6 +57,9 @@ class AEcdysisCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, Category = Gameplay_ADS)
 	bool isADS;
 
+	UPROPERTY(VisibleAnywhere, Category = Gameplay_ADS)
+	bool noADS;
+
 public:
 	AEcdysisCharacter();
 
@@ -91,6 +94,9 @@ public:
 	/** Whether to use motion controller location for aiming. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	uint8 bUsingMotionControllers : 1;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Camera)
+	float playerFOV = 90.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Stamina)
 	int currentStamina;
@@ -119,7 +125,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Movement)
 	float supersprintSpeed = 1300.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Weapons)
+	float fovADS = 70.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Controls)
+	bool adsToggle = false;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Weapons)
+		float adsZoomSpeed = 1.0f;
 
 protected:
 	
@@ -132,10 +145,6 @@ protected:
 
 	void StopSprint();
 
-	void SuperSprint();
-
-	void StopSuperSprint();
-
 	void ReduceStamina();
 
 	void IncreaseStamina();
@@ -144,8 +153,22 @@ protected:
 
 	void HandleGroundMovementType();
 
+	void OnPressADS();
+
+	void OnReleaseADS();
+	
+	void PerformADS();
+	
+	void CancelADS();
+
+	void HandleZoomIn();
+
+	void HandleZoomOut();
+
 	FTimerHandle TimerHandle_HandleStaminaIncrease;
 	FTimerHandle TimerHandle_HandleStaminaDecrease;
+	FTimerHandle TimerHandle_HandleAdsZoomIn;
+	FTimerHandle TimerHandle_HandleAdsZoomOut;
 
 	/** Resets HMD orientation and position in VR. */
 	void OnResetVR();
