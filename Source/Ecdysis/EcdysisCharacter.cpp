@@ -175,12 +175,98 @@ void AEcdysisCharacter::StopFire()
 
 void AEcdysisCharacter::Sprint()
 {
-		GetCharacterMovement()->MaxWalkSpeed = sprintSpeed;
+	movementType = movementType + 1;
+	HandleGroundMovementType();
+	switch (movementType)
+	{
+	case 0://Walk
+		GetCharacterMovement()->MaxWalkSpeed = walkSpeed;
+		GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+		if (!CheckStamina() || currentStamina < maxStamina)
+		{
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaIncrease, this, &AEcdysisCharacter::IncreaseStamina, 1, true);
+		}
+		break;
+	case 1://SuperSprint
+		if (CheckStamina() && currentStamina > 0.75f * maxStamina)
+		{
+			GetCharacterMovement()->MaxWalkSpeed = supersprintSpeed;
+			staminaReduceRate = staminaReduceRateSupersprint;
+			GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaIncrease);
+			GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaDecrease, this, &AEcdysisCharacter::ReduceStamina, 1, true);
+		}
+		else
+			Sprint();
+		break;
+	case 2://Sprint
+		if (CheckStamina())
+		{
+			GetCharacterMovement()->MaxWalkSpeed = sprintSpeed;
+			staminaReduceRate = staminaReduceRateSprint;
+			GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaIncrease);
+			GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaDecrease, this, &AEcdysisCharacter::ReduceStamina, 1, true);
+		}
+		else
+			Sprint();
+		break;
+
+	}
+
 }
 
 void AEcdysisCharacter::StopSprint()
 {
-	GetCharacterMovement()->MaxWalkSpeed = walkSpeed;
+	//GetCharacterMovement()->MaxWalkSpeed = walkSpeed;
+}
+
+void AEcdysisCharacter::SuperSprint()
+{
+	GetCharacterMovement()->MaxWalkSpeed = supersprintSpeed;
+}
+
+void AEcdysisCharacter::StopSuperSprint()
+{
+	//GetCharacterMovement()->MaxWalkSpeed = sprintSpeed;
+}
+
+void AEcdysisCharacter::ReduceStamina()
+{
+	currentStamina = currentStamina - 1 * staminaReduceRate;
+	if (currentStamina < (maxStamina * .75f) && movementType == 1)
+	{
+		Sprint();
+	}
+	if (!CheckStamina())
+	{
+		Sprint();
+	}
+}
+
+void AEcdysisCharacter::IncreaseStamina()
+{
+	currentStamina = currentStamina + staminaIncrease;
+}
+
+bool AEcdysisCharacter::CheckStamina()
+{
+	if (currentStamina <= 0) { currentStamina = 0; return false; }
+
+	else
+		if (currentStamina >= maxStamina) { currentStamina = maxStamina; }
+		return true;
+
+
+}
+
+void AEcdysisCharacter::HandleGroundMovementType()
+{
+	if (movementType > 2)
+	{
+		movementType = 0;
+	}
+	
 }
 
 void AEcdysisCharacter::OnFire()

@@ -51,6 +51,12 @@ class AEcdysisCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	UMotionControllerComponent* L_MotionController;
 
+	UPROPERTY(VisibleAnywhere, Category = Gameplay_Movement)
+	int movementType;
+	
+	UPROPERTY(VisibleAnywhere, Category = Gameplay_ADS)
+	bool isADS;
+
 public:
 	AEcdysisCharacter();
 
@@ -82,15 +88,38 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	UAnimMontage* FireAnimation;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
-	float walkSpeed = 600.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
-	float sprintSpeed = 1100.0f;
-
 	/** Whether to use motion controller location for aiming. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	uint8 bUsingMotionControllers : 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Stamina)
+	int currentStamina;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Stamina)
+	int maxStamina;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Stamina)
+	int staminaReduceRate;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Stamina)
+	int staminaReduceRateSprint;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Stamina)
+	int staminaReduceRateSupersprint;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Stamina)
+	int staminaIncrease;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Movement)
+	float walkSpeed = 600.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Movement)
+	float sprintSpeed = 1100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Movement)
+	float supersprintSpeed = 1300.0f;
+
+
 
 protected:
 	
@@ -103,7 +132,20 @@ protected:
 
 	void StopSprint();
 
-	//FTimerHandle TimerHandle_HandleRefire;
+	void SuperSprint();
+
+	void StopSuperSprint();
+
+	void ReduceStamina();
+
+	void IncreaseStamina();
+
+	bool CheckStamina();
+
+	void HandleGroundMovementType();
+
+	FTimerHandle TimerHandle_HandleStaminaIncrease;
+	FTimerHandle TimerHandle_HandleStaminaDecrease;
 
 	/** Resets HMD orientation and position in VR. */
 	void OnResetVR();
