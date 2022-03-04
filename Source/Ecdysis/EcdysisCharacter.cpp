@@ -186,8 +186,7 @@ void AEcdysisCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerI
 
 void AEcdysisCharacter::Tick(float DeltaTime)
 {
-	HandleZoomIn(DeltaTime);
-	HandleZoomOut(DeltaTime);
+	deltaTime = DeltaTime;
 }
 
 void AEcdysisCharacter::StopFire()
@@ -197,6 +196,11 @@ void AEcdysisCharacter::StopFire()
 
 void AEcdysisCharacter::Sprint()
 {
+	if (isCrouched)
+	{
+		PerformCrouch();
+		movementType = 0;
+	}
 	if (auto playerMovement = GetCharacterMovement())
 	{
 		movementType = movementType + 1;
@@ -309,6 +313,7 @@ void AEcdysisCharacter::PerformADS()
 	if(!adsZoom)
 	{
 		adsZoom = true;
+		GetWorldTimerManager().SetTimer(TimerHandle_AdsZoom, this, &AEcdysisCharacter::HandleZoomIn, .02f, true);
 	}
 }
 
@@ -327,12 +332,8 @@ void AEcdysisCharacter::CancelADS()
 }
 
 
-void AEcdysisCharacter::HandleZoomIn(float DeltaTime)
+void AEcdysisCharacter::HandleZoomIn()
 {
-	/*FString TheFloatStr = FString::SanitizeFloat(GetFirstPersonCameraComponent()->FieldOfView);
-	FString TheNewStr = FString::SanitizeFloat(playerFOV);
-	GEngine->AddOnScreenDebugMessage(-1, 1.0, FColor::Red, *TheFloatStr);
-	GEngine->AddOnScreenDebugMessage(1, 1.0, FColor::Green, *TheNewStr);*/
 	if (adsZoom)
 	{
 		if (isADS)
@@ -342,12 +343,13 @@ void AEcdysisCharacter::HandleZoomIn(float DeltaTime)
 				if (FMath::IsNearlyEqual(fpCam->FieldOfView, playerFOV, .6f))
 				{
 					fpCam->SetFieldOfView(playerFOV);
+					GetWorldTimerManager().ClearTimer(TimerHandle_AdsZoom);
 					isADS = false;
 					adsZoom = false;
 				}
 				else
 				{
-					fpCam->SetFieldOfView(UKismetMathLibrary::FInterpTo(fpCam->FieldOfView, playerFOV, DeltaTime, adsZoomSpeed));
+					fpCam->SetFieldOfView(UKismetMathLibrary::FInterpTo(fpCam->FieldOfView, playerFOV, deltaTime, adsZoomSpeed));
 				}
 			}
 		}
@@ -356,33 +358,34 @@ void AEcdysisCharacter::HandleZoomIn(float DeltaTime)
 			if (FMath::IsNearlyEqual(fpCam->FieldOfView, fovADS, .6f))
 			{
 				fpCam->SetFieldOfView(fovADS);
+				GetWorldTimerManager().ClearTimer(TimerHandle_AdsZoom);
 				isADS = true;
 				adsZoom = false;
 			}
 			else
 			{
-				fpCam->SetFieldOfView(UKismetMathLibrary::FInterpTo(fpCam->FieldOfView, fovADS, DeltaTime, adsZoomSpeed));
+				fpCam->SetFieldOfView(UKismetMathLibrary::FInterpTo(fpCam->FieldOfView, fovADS, deltaTime, adsZoomSpeed));
 			}
 		}
 	}
 }
 
 
-void AEcdysisCharacter::HandleZoomOut(float DeltaTime)
+void AEcdysisCharacter::HandleZoomOut()
 {
 	if (stopADS)
 	{
 
 		if (auto fpCam = GetFirstPersonCameraComponent())
 		{
-			fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, playerFOV, DeltaTime * adsZoomSpeed));
+			fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, playerFOV, deltaTime * adsZoomSpeed));
 			//if (fpCam->FieldOfView == fovADS)
 			//{
 			//	isADS = true;
 			//}
 			//else
 			//{
-			//	fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, fovADS, DeltaTime * adsZoomSpeed));
+			//	fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, fovADS, deltaTime * adsZoomSpeed));
 			//}
 		}
 	}
@@ -414,14 +417,61 @@ void AEcdysisCharacter::OnFire()
 
 void AEcdysisCharacter::OnCrouch()
 {
-	ACharacter::Crouch();
+	StopSprint();
+	PerformCrouch();
 }
 
 void AEcdysisCharacter::OnUnCrouch()
 {
-	ACharacter::UnCrouch();
 }
 
+void AEcdysisCharacter::PerformCrouch()
+{
+	if (!crouchZoom)
+	{
+		crouchZoom = true;
+		GetWorldTimerManager().SetTimer(TimerHandle_Crouch, this, &AEcdysisCharacter::HandleCrouchZoom, .01f, true);
+	}
+}
+
+void AEcdysisCharacter::HandleCrouchZoom()
+{
+	if (crouchZoom)
+	{
+		if (isCrouched)
+		{
+			if (auto fpCap = GetCapsuleComponent())
+			{
+				if (fpCap->GetUnscaledCapsuleHalfHeight() >= standHeight)
+				{
+					fpCap->SetCapsuleHalfHeight(standHeight);
+					GetWorldTimerManager().ClearTimer(TimerHandle_Crouch);
+					isCrouched = false;
+					crouchZoom = false;
+				}
+				else
+				{
+					fpCap->SetCapsuleHalfHeight(UKismetMathLibrary::FInterpTo_Constant(fpCap->GetUnscaledCapsuleHalfHeight(), standHeight, deltaTime, crouchZoomSpeed));
+				}
+			}
+		}
+		else if (auto fpCap = GetCapsuleComponent())
+		{
+			if (fpCap->GetUnscaledCapsuleHalfHeight() <= crouchHeight)
+			{
+				fpCap->SetCapsuleHalfHeight(crouchHeight);
+				GetWorldTimerManager().ClearTimer(TimerHandle_Crouch);
+				isCrouched = true;
+				crouchZoom = false;
+			}
+			else
+			{
+				fpCap->SetCapsuleHalfHeight(UKismetMathLibrary::FInterpTo_Constant(fpCap->GetUnscaledCapsuleHalfHeight(), crouchHeight, deltaTime, crouchZoomSpeed));
+			}
+		}
+
+	}
+}
 
 void AEcdysisCharacter::OnResetVR()
 {

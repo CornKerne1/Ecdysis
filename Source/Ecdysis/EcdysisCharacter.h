@@ -78,6 +78,15 @@ class AEcdysisCharacter : public ACharacter
 	UPROPERTY()
 	float adsZoom;
 
+	UPROPERTY()
+		float deltaTime;
+
+	UPROPERTY()
+		float isCrouched;
+
+	UPROPERTY()
+		float crouchZoom;
+
 public:
 	AEcdysisCharacter();
 
@@ -158,6 +167,13 @@ public:
 	UFUNCTION()
 		void TimelineProgress(float value);
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Crouch)
+		float standHeight;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Crouch)
+		float crouchHeight;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Crouch)
+		float crouchZoomSpeed;
+
 protected:
 	
 	/** Fires a projectile. */
@@ -166,6 +182,12 @@ protected:
 	void OnCrouch();
 
 	void OnUnCrouch();
+
+	void PerformCrouch();
+
+	void PerformUnCrouch();
+
+	void HandleCrouchZoom();
 	
 	void StopFire();
 
@@ -191,9 +213,9 @@ protected:
 	
 	void CancelADS();
 
-	void HandleZoomIn(float DeltaTime);
+	void HandleZoomIn();
 
-	void HandleZoomOut(float DeltaTime);
+	void HandleZoomOut();
 
 	FTimeline CurveFTimeline;
 	UPROPERTY(EditAnywhere, Category = "Timeline")
@@ -203,6 +225,10 @@ protected:
 	FTimerHandle TimerHandle_HandleStaminaIncrease;
 	UPROPERTY()
 	FTimerHandle TimerHandle_HandleStaminaDecrease;
+	UPROPERTY()
+	FTimerHandle TimerHandle_AdsZoom;
+	UPROPERTY()
+	FTimerHandle TimerHandle_Crouch;
 
 	/** Resets HMD orientation and position in VR. */
 	void OnResetVR();
