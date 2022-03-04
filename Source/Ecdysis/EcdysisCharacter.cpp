@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "EcdysisCharacter.h"
+#include "Engine.h"
 #include "EcdysisProjectile.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
@@ -9,6 +10,7 @@
 #include "GameFramework/InputSettings.h"
 #include "HeadMountedDisplayFunctionLibrary.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetStringLibrary.h"
 #include "MotionControllerComponent.h"
 #include "XRMotionControllerBase.h" // for FXRMotionControllerBase::RightHandSourceId
 #include "Kismet/KismetMathLibrary.h"
@@ -87,6 +89,11 @@ AEcdysisCharacter::AEcdysisCharacter()
 	//bUsingMotionControllers = true;
 }
 
+bool AEcdysisCharacter::IsReloading()
+{
+	return isReloading;
+}
+
 void AEcdysisCharacter::BeginPlay()
 {
 	// Call the base class  
@@ -129,12 +136,16 @@ void AEcdysisCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerI
 
 	PlayerInputComponent->BindAction("ResetVR", IE_Pressed, this, &AEcdysisCharacter::OnResetVR);
 
+	// Bind crouch events
+	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &AEcdysisCharacter::OnCrouch);
+	PlayerInputComponent->BindAction("Crouch", IE_Released, this, &AEcdysisCharacter::OnUnCrouch);
+
 	// Bind movement events
 	PlayerInputComponent->BindAxis("MoveForward", this, &AEcdysisCharacter::MoveForward);
 	PlayerInputComponent->BindAxis("MoveRight", this, &AEcdysisCharacter::MoveRight);
 
 	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &AEcdysisCharacter::Sprint);
-	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &AEcdysisCharacter::StopSprint);
+	//PlayerInputComponent->BindAction("Sprint", IE_Released, this, &AEcdysisCharacter::StopSprint);
 
 	PlayerInputComponent->BindAction("ADS", IE_Pressed, this, &AEcdysisCharacter::OnPressADS);
 	PlayerInputComponent->BindAction("ADS", IE_Released, this, &AEcdysisCharacter::OnReleaseADS);
@@ -173,6 +184,12 @@ void AEcdysisCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerI
 //	GetWorldTimerManager().SetTimer(TimerHandle_HandleRefire, this, &AEcdysisCharacter::FireShot, timeBetweenShots, true);
 //}
 
+void AEcdysisCharacter::Tick(float DeltaTime)
+{
+	HandleZoomIn(DeltaTime);
+	HandleZoomOut(DeltaTime);
+}
+
 void AEcdysisCharacter::StopFire()
 {
 	/*GetWorldTimerManager().ClearTimer(TimerHandle_HandleRefire);*/
@@ -195,25 +212,29 @@ void AEcdysisCharacter::Sprint()
 			}
 			break;
 		case 1://SuperSprint
+			if (isADS)
+			{
+				PerformADS();
+			}
 			if (CheckStamina() && currentStamina > 0.75f * maxStamina)
 			{
 				GetCharacterMovement()->MaxWalkSpeed = supersprintSpeed;
 				staminaReduceRate = staminaReduceRateSupersprint;
-				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaIncrease);
-				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
-				GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaDecrease, this, &AEcdysisCharacter::ReduceStamina, 1, true);
+				ResetAndStartTimer(TimerHandle_HandleStaminaDecrease, 1, true);
 			}
 			else
 				Sprint();
 			break;
 		case 2://Sprint
+			if (isADS)
+			{
+				PerformADS();
+			}
 			if (CheckStamina())
 			{
 				GetCharacterMovement()->MaxWalkSpeed = sprintSpeed;
 				staminaReduceRate = staminaReduceRateSprint;
-				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaIncrease);
-				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
-				GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaDecrease, this, &AEcdysisCharacter::ReduceStamina, 1, true);
+				ResetAndStartTimer(TimerHandle_HandleStaminaDecrease, 1, true);
 			}
 			else
 				Sprint();
@@ -224,7 +245,11 @@ void AEcdysisCharacter::Sprint()
 
 void AEcdysisCharacter::StopSprint()
 {
-	//GetCharacterMovement()->MaxWalkSpeed = walkSpeed;
+	if (movementType == 1 || movementType == 2)
+	{
+		movementType = 2;
+		Sprint();
+	}
 }
 
 void AEcdysisCharacter::ReduceStamina()
@@ -243,6 +268,13 @@ void AEcdysisCharacter::ReduceStamina()
 void AEcdysisCharacter::IncreaseStamina()
 {
 	currentStamina = currentStamina + staminaIncrease;
+}
+
+void AEcdysisCharacter::ResetAndStartTimer(FTimerHandle handle, float loopTime, bool looping)
+{
+	GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaIncrease);
+	GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+	GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaDecrease, this, &AEcdysisCharacter::ReduceStamina, 1, true);
 }
 
 bool AEcdysisCharacter::CheckStamina()
@@ -267,96 +299,97 @@ void AEcdysisCharacter::HandleGroundMovementType()
 
 void AEcdysisCharacter::OnPressADS()
 {
-	if (adsToggle)
-	{
-		if (isADS)
-		{
-			CancelADS();
-		}
-		else
-		{
-			PerformADS();
-		}
-	}
+	StopSprint();
+	adsKeyDown = true;
 	PerformADS();
 }
 
 void AEcdysisCharacter::PerformADS()
 {
-	if (!noADS)
+	if(!adsZoom)
 	{
-		GetWorldTimerManager().SetTimer(TimerHandle_HandleAdsZoomIn, this, &AEcdysisCharacter::HandleZoomIn, .02f, true);
+		adsZoom = true;
 	}
 }
 
 void AEcdysisCharacter::OnReleaseADS()
 {
-	if (!adsToggle)
-	{
-		//CancelADS();
-	}
+	adsKeyDown = false;
+	PerformADS();
 }
 
 void AEcdysisCharacter::CancelADS()
 {
-		if(isADS)
-		{
-			GetWorldTimerManager().SetTimer(TimerHandle_HandleAdsZoomOut, this, &AEcdysisCharacter::HandleZoomOut, .02f, true);
-		}
-}
-
-void AEcdysisCharacter::HandleZoomIn()
-{	
-	if(!isADS)
+	if (!adsZoom)
 	{
-		if (auto fpCam = GetFirstPersonCameraComponent())
-		{
-			if (fpCam->FieldOfView == fovADS)
-			{
-				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
-				isADS = true;
-			}
-			else
-			{
-				fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, fovADS, adsZoomSpeed));
-			}
-		}
+		adsZoom = true;
 	}
 }
 
-void AEcdysisCharacter::HandleZoomOut()
+
+void AEcdysisCharacter::HandleZoomIn(float DeltaTime)
 {
-
-	if (isADS)
+	/*FString TheFloatStr = FString::SanitizeFloat(GetFirstPersonCameraComponent()->FieldOfView);
+	FString TheNewStr = FString::SanitizeFloat(playerFOV);
+	GEngine->AddOnScreenDebugMessage(-1, 1.0, FColor::Red, *TheFloatStr);
+	GEngine->AddOnScreenDebugMessage(1, 1.0, FColor::Green, *TheNewStr);*/
+	if (adsZoom)
 	{
-		if (auto fpCam = GetFirstPersonCameraComponent())
+		if (isADS)
 		{
-			if (fpCam->FieldOfView == playerFOV)
+			if (auto fpCam = GetFirstPersonCameraComponent())
 			{
-				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
-				isADS = false;
-			}
-			else
-			{
-				fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, playerFOV, adsZoomSpeed));
+				if (FMath::IsNearlyEqual(fpCam->FieldOfView, playerFOV, .6f))
+				{
+					fpCam->SetFieldOfView(playerFOV);
+					isADS = false;
+					adsZoom = false;
+				}
+				else
+				{
+					fpCam->SetFieldOfView(UKismetMathLibrary::FInterpTo(fpCam->FieldOfView, playerFOV, DeltaTime, adsZoomSpeed));
+				}
 			}
 		}
-	}
-	else
-	{
-		if (auto fpCam = GetFirstPersonCameraComponent())
+		else if (auto fpCam = GetFirstPersonCameraComponent())
 		{
-			if (fpCam->FieldOfView == fovADS)
+			if (FMath::IsNearlyEqual(fpCam->FieldOfView, fovADS, .6f))
 			{
-				GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+				fpCam->SetFieldOfView(fovADS);
 				isADS = true;
+				adsZoom = false;
 			}
 			else
 			{
-				fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, fovADS, adsZoomSpeed));
+				fpCam->SetFieldOfView(UKismetMathLibrary::FInterpTo(fpCam->FieldOfView, fovADS, DeltaTime, adsZoomSpeed));
 			}
 		}
 	}
+}
+
+
+void AEcdysisCharacter::HandleZoomOut(float DeltaTime)
+{
+	if (stopADS)
+	{
+
+		if (auto fpCam = GetFirstPersonCameraComponent())
+		{
+			fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, playerFOV, DeltaTime * adsZoomSpeed));
+			//if (fpCam->FieldOfView == fovADS)
+			//{
+			//	isADS = true;
+			//}
+			//else
+			//{
+			//	fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, fovADS, DeltaTime * adsZoomSpeed));
+			//}
+		}
+	}
+}
+
+void AEcdysisCharacter::TimelineProgress(float value)
+{
 }
 
 void AEcdysisCharacter::OnFire()
@@ -377,6 +410,16 @@ void AEcdysisCharacter::OnFire()
 			AnimInstance->Montage_Play(FireAnimation, 1.f);
 		}
 	}
+}
+
+void AEcdysisCharacter::OnCrouch()
+{
+	ACharacter::Crouch();
+}
+
+void AEcdysisCharacter::OnUnCrouch()
+{
+	ACharacter::UnCrouch();
 }
 
 

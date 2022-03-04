@@ -8,6 +8,9 @@ public class Ecdysis : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "HeadMountedDisplay" });
+		PublicIncludePaths.AddRange(new string[] { "XProjectile/Public", "XProjectile/Classes" });
+		
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "HeadMountedDisplay", "XProjectile" });
+
 	}
 }

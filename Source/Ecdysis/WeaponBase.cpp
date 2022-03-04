@@ -2,6 +2,8 @@
 
 
 #include "WeaponBase.h"
+#include "BulletBase.h"
+#include "MagazineBase.h"
 #include "Runtime/Engine/Classes/Kismet/GameplayStatics.h"
 
 // Sets default values
@@ -21,6 +23,39 @@ AWeaponBase::AWeaponBase()
 	GunOffset = FVector(100.0f, 0.0f, 10.0f);
 
 
+}
+
+void AWeaponBase::OnFire()
+{
+	/*if (auto rc = roundChambered)
+	{
+		FireWeapon();
+		ChamberNextRound();
+	}*/
+	/*else
+	{
+
+	}*/
+}
+
+void AWeaponBase::FireWeapon()
+{
+}
+
+void AWeaponBase::ChamberNextRound()
+{
+	if (!playerRef->IsReloading())
+	{
+		if (auto cM = currentMag)
+		{
+			/*roundChambered = currentMag->magContents.GetData();*/
+		}
+	}
+}
+
+void AWeaponBase::AddMag(AMagazineBase* mag)
+{
+	currentMag = mag;
 }
 
 // Called when the game starts or when spawned

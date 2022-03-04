@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "EcdysisCharacter.h"
+#include "MagazineBase.h"
 #include "WeaponBase.generated.h"
 
 UCLASS()
@@ -26,24 +27,41 @@ public:
 
 	void Interact(AEcdysisCharacter player);
 
+	virtual void OnFire();
+
+	virtual void FireWeapon();
+
+	virtual void ChamberNextRound();
+
+	virtual void AddMag(AMagazineBase* mag);
+
 public:
 
-	UPROPERTY(VisibleDefaultsOnly, Category = Mesh)
-		class USkeletalMeshComponent* WeaponFpp;
+	UPROPERTY(VisibleDefaultsOnly, Category = Weapon_Mesh)
+	class USkeletalMeshComponent* WeaponFpp;
 
-	UPROPERTY(VisibleDefaultsOnly, Category = Gameplay)
-		class USceneComponent* MuzzleLocation;
+	UPROPERTY(VisibleDefaultsOnly, Category = Weapon_Mesh)
+	class USceneComponent* MuzzleLocation;
 
-	UPROPERTY(VisibleDefaultsOnly, Category = Gameplay)
-		FVector GunOffset;
+	UPROPERTY(VisibleDefaultsOnly, Category = Weapon_Mesh)
+	FVector GunOffset;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
-		float timeBetweenShots;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Weapon_Gameplay)
+	float timeBetweenShots;
 
-		AEcdysisCharacter* playerRef;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Weapon_Gameplay)
+	float timeToReload;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Weapon_Gameplay)
+	class AMagazineBase*  currentMag = nullptr;
+
+	UPROPERTY()
+	AEcdysisCharacter* playerRef;
 
 protected:
 	
 	virtual void AddAndEquip();
+
+	ABulletBase roundChambered;
 
 };

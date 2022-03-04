@@ -3,9 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/TimelineComponent.h"
 #include "GameFramework/Character.h"
 #include "EcdysisCharacter.generated.h"
 
+
+class UCurveFloat;
 class UInputComponent;
 class USkeletalMeshComponent;
 class USceneComponent;
@@ -53,20 +56,39 @@ class AEcdysisCharacter : public ACharacter
 
 	UPROPERTY(VisibleAnywhere, Category = Gameplay_Movement)
 	int movementType;
+
+	UPROPERTY(VisibleAnywhere, Category = Gameplay_Crouching)
+	bool isCrouching;
+	
+	UPROPERTY(VisibleAnywhere, Category = Gameplay_Reloading)
+	bool isReloading;
 	
 	UPROPERTY(VisibleAnywhere, Category = Gameplay_ADS)
 	bool isADS;
 
 	UPROPERTY(VisibleAnywhere, Category = Gameplay_ADS)
-	bool noADS;
+	bool adsKeyDown;
+
+	UPROPERTY(VisibleAnywhere, Category = Gameplay_ADS)
+	bool stopADS;
+
+	UPROPERTY()
+	float adsTimer;
+
+	UPROPERTY()
+	float adsZoom;
 
 public:
 	AEcdysisCharacter();
+
+	bool IsReloading();
 
 protected:
 	virtual void BeginPlay();
 
 public:
+	
+	virtual void Tick(float DeltaTime) override;
 	/** Base turn rate, in deg/sec. Other scaling may affect final turn rate. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=Camera)
 	float BaseTurnRate;
@@ -133,12 +155,18 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Weapons)
 		float adsZoomSpeed = 1.0f;
+	UFUNCTION()
+		void TimelineProgress(float value);
 
 protected:
 	
 	/** Fires a projectile. */
 	void OnFire();
 
+	void OnCrouch();
+
+	void OnUnCrouch();
+	
 	void StopFire();
 
 	void Sprint();
@@ -148,6 +176,8 @@ protected:
 	void ReduceStamina();
 
 	void IncreaseStamina();
+
+	void ResetAndStartTimer(FTimerHandle handle, float loopTime, bool looping);
 
 	bool CheckStamina();
 
@@ -161,14 +191,18 @@ protected:
 	
 	void CancelADS();
 
-	void HandleZoomIn();
+	void HandleZoomIn(float DeltaTime);
 
-	void HandleZoomOut();
+	void HandleZoomOut(float DeltaTime);
 
+	FTimeline CurveFTimeline;
+	UPROPERTY(EditAnywhere, Category = "Timeline")
+	UCurveFloat* CurveFloat;
+
+	UPROPERTY()
 	FTimerHandle TimerHandle_HandleStaminaIncrease;
+	UPROPERTY()
 	FTimerHandle TimerHandle_HandleStaminaDecrease;
-	FTimerHandle TimerHandle_HandleAdsZoomIn;
-	FTimerHandle TimerHandle_HandleAdsZoomOut;
 
 	/** Resets HMD orientation and position in VR. */
 	void OnResetVR();
