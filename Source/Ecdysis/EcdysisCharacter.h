@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/TimelineComponent.h"
 #include "GameFramework/Character.h"
+#include "BaseWeapon.h"
 #include "EcdysisCharacter.generated.h"
 
 
@@ -25,23 +26,6 @@ class AEcdysisCharacter : public ACharacter
 	/** Pawn mesh: 1st person view (arms; seen only by self) */
 	UPROPERTY(VisibleDefaultsOnly, Category=Mesh)
 	USkeletalMeshComponent* ArmsFpp;
-
-	/** Gun mesh: 1st person view (seen only by self) */
-	UPROPERTY(VisibleDefaultsOnly, Category = Mesh)
-	USkeletalMeshComponent* FP_Gun;
-
-	/** Location on gun mesh where projectiles should spawn. */
-	UPROPERTY(VisibleDefaultsOnly, Category = Mesh)
-	USceneComponent* FP_MuzzleLocation;
-
-	/** Gun mesh: VR view (attached to the VR controller directly, no arm, just the actual gun) */
-	UPROPERTY(VisibleDefaultsOnly, Category = Mesh)
-	USkeletalMeshComponent* VR_Gun;
-
-	/** Location on VR gun mesh where projectiles should spawn. */
-	UPROPERTY(VisibleDefaultsOnly, Category = Mesh)
-	USceneComponent* VR_MuzzleLocation;
-
 	/** First person camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FirstPersonCameraComponent;
@@ -49,48 +33,54 @@ class AEcdysisCharacter : public ACharacter
 	/** Motion controller (right hand) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	UMotionControllerComponent* R_MotionController;
-
 	/** Motion controller (left hand) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	UMotionControllerComponent* L_MotionController;
 
+	UPROPERTY()
+	float deltaTime;
+	
 	UPROPERTY(VisibleAnywhere, Category = Gameplay_Movement)
 	int movementType;
 
 	UPROPERTY(VisibleAnywhere, Category = Gameplay_Crouching)
 	bool isCrouching;
+	UPROPERTY(VisibleAnywhere, Category = Gameplay_Crouching)
+	bool crouchKeyDown;
 	
 	UPROPERTY(VisibleAnywhere, Category = Gameplay_Reloading)
 	bool isReloading;
 	
 	UPROPERTY(VisibleAnywhere, Category = Gameplay_ADS)
+	float currentStrafeSpeedModifier;
+	UPROPERTY(VisibleAnywhere, Category = Gameplay_ADS)
 	bool isADS;
-
 	UPROPERTY(VisibleAnywhere, Category = Gameplay_ADS)
 	bool adsKeyDown;
-
 	UPROPERTY(VisibleAnywhere, Category = Gameplay_ADS)
 	bool stopADS;
-
 	UPROPERTY()
 	float adsTimer;
-
 	UPROPERTY()
 	float adsZoom;
+	
+	UPROPERTY()
+	float isCrouched;
+	UPROPERTY()
+	float crouchZoom;
 
 	UPROPERTY()
-		float deltaTime;
-
+	float leanState;
 	UPROPERTY()
-		float isCrouched;
+	bool leanZoom;
 
-	UPROPERTY()
-		float crouchZoom;
 
 public:
 	AEcdysisCharacter();
 
 	bool IsReloading();
+
+	void GunToHands();
 
 protected:
 	virtual void BeginPlay();
@@ -98,6 +88,9 @@ protected:
 public:
 	
 	virtual void Tick(float DeltaTime) override;
+
+
+	void PlayAnimationMontage(UAnimMontage* anim);
 	/** Base turn rate, in deg/sec. Other scaling may affect final turn rate. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=Camera)
 	float BaseTurnRate;
@@ -114,18 +107,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category=Projectile)
 	TSubclassOf<class AEcdysisProjectile> ProjectileClass;
 
-	/** Sound to play each time we fire */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Gameplay)
-	USoundBase* FireSound;
-
-	/** AnimMontage to play each time we fire */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
-	UAnimMontage* FireAnimation;
-
 	/** Whether to use motion controller location for aiming. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	uint8 bUsingMotionControllers : 1;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Interaction)
+	float interactRange;
+	
+	UPROPERTY(BlueprintReadOnly, Category = Gameplay_Interaction)
+	float rayCastRange = 100000.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Camera)
 	float playerFOV = 90.0f;
 
@@ -146,7 +137,13 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Stamina)
 	int staminaIncrease;
-
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Movement)
+	float strafeSpeedModifier = .75f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Movement)
+	float crouchSpeed = 300.0f;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Movement)
 	float walkSpeed = 600.0f;
 
@@ -163,59 +160,56 @@ public:
 	bool adsToggle = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Weapons)
-		float adsZoomSpeed = 1.0f;
-	UFUNCTION()
-		void TimelineProgress(float value);
+	float adsZoomSpeed = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Crouch)
-		float standHeight;
+	float standHeight;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Crouch)
-		float crouchHeight;
+	float crouchHeight;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Crouch)
-		float crouchZoomSpeed;
+	float crouchZoomSpeed;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = Gameplay_Weapons)
+	class AActor* currentInteractable;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = Gameplay_Weapons)
+	class ABaseWeapon* equippedWeapon;
 
 protected:
 	
+	void Initialize();
+	void StartInteractionSystem();
+	void MainRayCast();
 	/** Fires a projectile. */
 	void OnFire();
-
+	
+	void OnInteract();
+	
 	void OnCrouch();
-
 	void OnUnCrouch();
-
 	void PerformCrouch();
-
-	void PerformUnCrouch();
-
 	void HandleCrouchZoom();
+	void CrouchHoldCheck();
 	
 	void StopFire();
-
 	void Sprint();
-
 	void StopSprint();
-
+	
 	void ReduceStamina();
-
 	void IncreaseStamina();
-
 	void ResetAndStartTimer(FTimerHandle handle, float loopTime, bool looping);
-
 	bool CheckStamina();
 
 	void HandleGroundMovementType();
 
 	void OnPressADS();
-
-	void OnReleaseADS();
-	
-	void PerformADS();
-	
+	void OnReleaseADS();	
+	void PerformADS();	
 	void CancelADS();
-
 	void HandleZoomIn();
+	void AdsHoldCheck();
 
-	void HandleZoomOut();
+	void OnReload();
 
 	FTimeline CurveFTimeline;
 	UPROPERTY(EditAnywhere, Category = "Timeline")
@@ -229,6 +223,12 @@ protected:
 	FTimerHandle TimerHandle_AdsZoom;
 	UPROPERTY()
 	FTimerHandle TimerHandle_Crouch;
+	UPROPERTY()
+	FTimerHandle TimerHandle_AdsHoldCheck;
+	UPROPERTY()
+	FTimerHandle TimerHandle_CrouchHoldCheck;
+	UPROPERTY()
+	FTimerHandle TimerHandle_Interaction;
 
 	/** Resets HMD orientation and position in VR. */
 	void OnResetVR();
@@ -239,6 +239,9 @@ protected:
 	/** Handles stafing movement, left and right */
 	void MoveRight(float Val);
 
+	/** Handles lean, left and right */
+	void OnLean(float Val);
+	
 	/**
 	 * Called via input to turn at a given rate.
 	 * @param Rate	This is a normalized rate, i.e. 1.0 means 100% of desired turn rate

@@ -15,6 +15,8 @@
 #include "XRMotionControllerBase.h" // for FXRMotionControllerBase::RightHandSourceId
 #include "Kismet/KismetMathLibrary.h"
 #include "Misc/App.h"
+#include "Engine/World.h"
+#include "Interaction.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogFPChar, Warning, All);
@@ -45,19 +47,6 @@ AEcdysisCharacter::AEcdysisCharacter()
 	ArmsFpp->CastShadow = false;
 	ArmsFpp->SetRelativeRotation(FRotator(1.9f, -19.19f, 5.2f));
 	ArmsFpp->SetRelativeLocation(FVector(-0.5f, -4.4f, -155.7f));
-
-	// Create a gun mesh component
-	FP_Gun = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FP_Gun"));
-	FP_Gun->SetOnlyOwnerSee(false);			// otherwise won't be visible in the multiplayer
-	FP_Gun->bCastDynamicShadow = false;
-	FP_Gun->CastShadow = false;
-	// FP_Gun->SetupAttachment(Mesh1P, TEXT("GripPoint"));
-	FP_Gun->SetupAttachment(RootComponent);
-
-	FP_MuzzleLocation = CreateDefaultSubobject<USceneComponent>(TEXT("MuzzleLocation"));
-	FP_MuzzleLocation->SetupAttachment(FP_Gun);
-	FP_MuzzleLocation->SetRelativeLocation(FVector(0.2f, 48.4f, -10.6f));
-
 	// Default offset from the character location for projectiles to spawn
 	GunOffset = FVector(100.0f, 0.0f, 10.0f);
 
@@ -71,22 +60,7 @@ AEcdysisCharacter::AEcdysisCharacter()
 	L_MotionController = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("L_MotionController"));
 	L_MotionController->SetupAttachment(RootComponent);
 
-	// Create a gun and attach it to the right-hand VR controller.
-	// Create a gun mesh component
-	VR_Gun = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("VR_Gun"));
-	VR_Gun->SetOnlyOwnerSee(false);			// otherwise won't be visible in the multiplayer
-	VR_Gun->bCastDynamicShadow = false;
-	VR_Gun->CastShadow = false;
-	VR_Gun->SetupAttachment(R_MotionController);
-	VR_Gun->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
-
-	VR_MuzzleLocation = CreateDefaultSubobject<USceneComponent>(TEXT("VR_MuzzleLocation"));
-	VR_MuzzleLocation->SetupAttachment(VR_Gun);
-	VR_MuzzleLocation->SetRelativeLocation(FVector(0.000004, 53.999992, 10.000000));
-	VR_MuzzleLocation->SetRelativeRotation(FRotator(0.0f, 90.0f, 0.0f));		// Counteract the rotation of the VR gun model.
-
-	// Uncomment the following line to turn motion controllers on by default:
-	//bUsingMotionControllers = true;
+	equippedWeapon = nullptr;
 }
 
 bool AEcdysisCharacter::IsReloading()
@@ -94,27 +68,87 @@ bool AEcdysisCharacter::IsReloading()
 	return isReloading;
 }
 
+void AEcdysisCharacter::GunToHands()
+{
+	equippedWeapon->AttachToComponent(ArmsFpp, FAttachmentTransformRules(EAttachmentRule::SnapToTarget, true), TEXT("GripPoint"));
+}
+
 void AEcdysisCharacter::BeginPlay()
 {
 	// Call the base class  
 	Super::BeginPlay();
 
-	//Attach gun mesh component to Skeleton, doing it here because the skeleton is not yet created in the constructor
-	FP_Gun->AttachToComponent(ArmsFpp, FAttachmentTransformRules(EAttachmentRule::SnapToTarget, true), TEXT("GripPoint"));
-
-	// Show or hide the two versions of the gun based on whether or not we're using motion controllers.
-	if (bUsingMotionControllers)
-	{
-		VR_Gun->SetHiddenInGame(false, true);
-		ArmsFpp->SetHiddenInGame(true, true);
-	}
-	else
-	{
-		VR_Gun->SetHiddenInGame(true, true);
-		ArmsFpp->SetHiddenInGame(false, true);
-	}
+	Initialize();
+	ArmsFpp->SetHiddenInGame(false, true);
 }
 
+void AEcdysisCharacter::Initialize()
+{
+	currentStamina = maxStamina;
+	currentStrafeSpeedModifier = strafeSpeedModifier;
+	if (auto cam = GetFirstPersonCameraComponent())
+	{
+		cam->SetFieldOfView(playerFOV);
+	}
+	if (auto cM = GetCharacterMovement())
+	{
+		cM->MaxWalkSpeed = walkSpeed;
+	}
+	if (auto cC = GetCapsuleComponent())
+	{
+		cC->SetCapsuleHalfHeight(standHeight);
+	}
+	StartInteractionSystem();
+}
+void AEcdysisCharacter::StartInteractionSystem()
+{
+	GetWorldTimerManager().SetTimer(TimerHandle_Interaction, this, &AEcdysisCharacter::MainRayCast, .01f, true);
+}
+void AEcdysisCharacter::MainRayCast()
+{
+	FVector Loc;
+	FRotator Rot;
+	GetController()->GetPlayerViewPoint(Loc, Rot);
+	FVector Start = Loc;
+	FVector End = Start + (Rot.Vector() * rayCastRange);
+	FCollisionQueryParams TraceParams;
+	//DrawDebugLine(GetWorld(), FirstPersonCameraComponent->GetComponentLocation(), FirstPersonCameraComponent->GetComponentLocation() + FirstPersonCameraComponent->GetForwardVector() * rayCastRange, FColor::Blue, false, 1, 0, 1);
+	FHitResult outHit;
+	if (GetWorld()->LineTraceSingleByChannel(outHit, Start, End, ECC_Visibility, TraceParams))
+	{
+		if (auto Interactable = outHit.GetActor())
+		{
+			if (AActor::GetDistanceTo(Interactable) <= interactRange)
+			{
+				if (Interactable != currentInteractable)
+				{
+					if (currentInteractable)
+					{
+						if (auto* interface = Cast<IInteraction>(currentInteractable))
+						{
+							interface->Execute_EndFocus(currentInteractable, this);
+						}
+
+					}
+					if (auto* interface = Cast<IInteraction>(Interactable))
+					{
+						interface->Execute_OnFocus(Interactable, this);
+					}
+					currentInteractable = Interactable;
+				}
+			}
+		}
+		else
+			if (currentInteractable)
+			{
+				if (auto* interface = Cast<IInteraction>(currentInteractable))
+				{
+					interface->Execute_EndFocus(currentInteractable, this);
+				}
+			}
+		currentInteractable = nullptr;
+	}
+}
 //////////////////////////////////////////////////////////////////////////
 // Input
 
@@ -149,6 +183,10 @@ void AEcdysisCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerI
 
 	PlayerInputComponent->BindAction("ADS", IE_Pressed, this, &AEcdysisCharacter::OnPressADS);
 	PlayerInputComponent->BindAction("ADS", IE_Released, this, &AEcdysisCharacter::OnReleaseADS);
+
+	PlayerInputComponent->BindAction("Reload", IE_Pressed, this, &AEcdysisCharacter::OnReload);
+
+	PlayerInputComponent->BindAction("Interact", IE_Pressed, this, &AEcdysisCharacter::OnInteract);
 	
 	// We have 2 versions of the rotation bindings to handle different kinds of devices differently
 	// "turn" handles devices that provide an absolute delta, such as a mouse.
@@ -157,6 +195,7 @@ void AEcdysisCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerI
 	PlayerInputComponent->BindAxis("TurnRate", this, &AEcdysisCharacter::TurnAtRate);
 	PlayerInputComponent->BindAxis("LookUp", this, &APawn::AddControllerPitchInput);
 	PlayerInputComponent->BindAxis("LookUpRate", this, &AEcdysisCharacter::LookUpAtRate);
+	PlayerInputComponent->BindAxis("Lean", this, &AEcdysisCharacter::OnLean);
 }
 
 
@@ -187,6 +226,38 @@ void AEcdysisCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerI
 void AEcdysisCharacter::Tick(float DeltaTime)
 {
 	deltaTime = DeltaTime;
+}
+
+
+void AEcdysisCharacter::OnInteract()
+{
+	if (currentInteractable)
+	{
+		if (auto interface = Cast<IInteraction>(currentInteractable))
+		{
+			if (AActor::GetDistanceTo(currentInteractable) <= interactRange)
+			{
+				interface->Execute_OnInteraction(currentInteractable, this);
+			}
+			else
+			{
+				currentInteractable = nullptr;
+			}
+		}
+	}
+}
+
+void AEcdysisCharacter::PlayAnimationMontage(UAnimMontage* anim)
+{
+	if (anim != nullptr)
+	{
+		// Get the animation object for the arms mesh
+		UAnimInstance* AnimInstance = ArmsFpp->GetAnimInstance();
+		if (AnimInstance != nullptr)
+		{
+			AnimInstance->Montage_Play(anim, 1.f);
+		}
+	}
 }
 
 void AEcdysisCharacter::StopFire()
@@ -249,7 +320,7 @@ void AEcdysisCharacter::Sprint()
 
 void AEcdysisCharacter::StopSprint()
 {
-	if (movementType == 1 || movementType == 2)
+	if (movementType != 0)
 	{
 		movementType = 2;
 		Sprint();
@@ -303,9 +374,16 @@ void AEcdysisCharacter::HandleGroundMovementType()
 
 void AEcdysisCharacter::OnPressADS()
 {
-	StopSprint();
 	adsKeyDown = true;
-	PerformADS();
+	if (isADS)
+	{
+		GetWorldTimerManager().SetTimer(TimerHandle_AdsHoldCheck, this, &AEcdysisCharacter::AdsHoldCheck, .05, false);
+	}
+	else
+	{
+		StopSprint();
+		PerformADS();
+	}
 }
 
 void AEcdysisCharacter::PerformADS()
@@ -321,6 +399,26 @@ void AEcdysisCharacter::OnReleaseADS()
 {
 	adsKeyDown = false;
 	PerformADS();
+
+
+}
+
+void AEcdysisCharacter::AdsHoldCheck()
+{
+	if (!adsKeyDown)
+	{		
+		StopSprint();
+		PerformADS();
+	}
+	GetWorldTimerManager().ClearTimer(TimerHandle_AdsHoldCheck);
+}
+
+void AEcdysisCharacter::OnReload()
+{
+	if (equippedWeapon)
+	{
+		equippedWeapon->ReloadWeapon();
+	}
 }
 
 void AEcdysisCharacter::CancelADS()
@@ -369,60 +467,84 @@ void AEcdysisCharacter::HandleZoomIn()
 		}
 	}
 }
-
-
-void AEcdysisCharacter::HandleZoomOut()
+void AEcdysisCharacter::OnLean(float Val)
 {
-	if (stopADS)
+	leanState = Val;
+	float leanValue = GetControlRotation().Roll;
+	if (leanState != 0)
 	{
-
-		if (auto fpCam = GetFirstPersonCameraComponent())
+		if (leanValue + leanState <= 20.0f || leanValue + leanState >= 340.0f)
 		{
-			fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, playerFOV, deltaTime * adsZoomSpeed));
-			//if (fpCam->FieldOfView == fovADS)
-			//{
-			//	isADS = true;
-			//}
-			//else
-			//{
-			//	fpCam->SetFieldOfView(UKismetMathLibrary::Lerp(fpCam->FieldOfView, fovADS, deltaTime * adsZoomSpeed));
-			//}
+			AddControllerRollInput(leanState / 2.0f);
+			if (leanState > 0.0f)
+			{
+				AddActorLocalOffset(FVector(0.0f, 2.0f, 0.0f));//Right
+			}
+			else
+			{
+				AddActorLocalOffset(FVector(0.0f, -2.0f, 0.0f));//Left
+			}
 		}
 	}
-}
+	else
+	{
+		if (leanValue != 0.0f)
+		{
+			if (leanValue >= 340.0f)
+			{
+				if (leanValue <= 359.0f)
+				{
+					AddControllerRollInput(1.0f / 2.0f);
+					AddActorLocalOffset(FVector(0.0f, 2.0f, 0.0f));
+				}
+				else
+				{
+					AddControllerRollInput(360.0f - leanValue);
+				}
+			}
+			else if (leanValue <= 20.0f)
+			{
+				if (leanValue >= 1.0f)
+				{
+					AddControllerRollInput(-1.0f / 2.0f);
+					AddActorLocalOffset(FVector(0.0f, -2.0f, 0.0f));
+				}
+				else
+				{
+					AddControllerRollInput(0.0f - leanValue);
+				}
+			}
+		}
+	}
 
-void AEcdysisCharacter::TimelineProgress(float value)
-{
 }
 
 void AEcdysisCharacter::OnFire()
 {
-		// try and play the sound if specified
-	if (FireSound != nullptr)
+	if (equippedWeapon)
 	{
-		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
-	}
-
-	// try and play a firing animation if specified
-	if (FireAnimation != nullptr)
-	{
-		// Get the animation object for the arms mesh
-		UAnimInstance* AnimInstance = ArmsFpp->GetAnimInstance();
-		if (AnimInstance != nullptr)
-		{
-			AnimInstance->Montage_Play(FireAnimation, 1.f);
-		}
+		equippedWeapon->FireWeapon();
 	}
 }
 
 void AEcdysisCharacter::OnCrouch()
 {
-	StopSprint();
-	PerformCrouch();
+	crouchKeyDown = true;
+	if (isCrouched)
+	{
+		GetWorldTimerManager().SetTimer(TimerHandle_CrouchHoldCheck, this, &AEcdysisCharacter::CrouchHoldCheck, .05, false);
+	}
+	else
+	{
+		StopSprint();
+		PerformCrouch();
+	}
 }
 
 void AEcdysisCharacter::OnUnCrouch()
 {
+	crouchKeyDown = false;
+	PerformCrouch();
 }
 
 void AEcdysisCharacter::PerformCrouch()
@@ -432,6 +554,16 @@ void AEcdysisCharacter::PerformCrouch()
 		crouchZoom = true;
 		GetWorldTimerManager().SetTimer(TimerHandle_Crouch, this, &AEcdysisCharacter::HandleCrouchZoom, .01f, true);
 	}
+}
+
+void AEcdysisCharacter::CrouchHoldCheck()
+{
+	if (!crouchKeyDown)
+	{
+		StopSprint();
+		PerformCrouch();
+	}
+	GetWorldTimerManager().ClearTimer(TimerHandle_CrouchHoldCheck);
 }
 
 void AEcdysisCharacter::HandleCrouchZoom()
@@ -448,6 +580,8 @@ void AEcdysisCharacter::HandleCrouchZoom()
 					GetWorldTimerManager().ClearTimer(TimerHandle_Crouch);
 					isCrouched = false;
 					crouchZoom = false;
+					GetCharacterMovement()->MaxWalkSpeed = walkSpeed;
+					movementType = 0;
 				}
 				else
 				{
@@ -463,6 +597,7 @@ void AEcdysisCharacter::HandleCrouchZoom()
 				GetWorldTimerManager().ClearTimer(TimerHandle_Crouch);
 				isCrouched = true;
 				crouchZoom = false;
+				GetCharacterMovement()->MaxWalkSpeed = crouchSpeed;
 			}
 			else
 			{
@@ -503,44 +638,6 @@ void AEcdysisCharacter::EndTouch(const ETouchIndex::Type FingerIndex, const FVec
 	TouchItem.bIsPressed = false;
 }
 
-//Commenting this section out to be consistent with FPS BP template.
-//This allows the user to turn without using the right virtual joystick
-
-//void AEcdysisCharacter::TouchUpdate(const ETouchIndex::Type FingerIndex, const FVector Location)
-//{
-//	if ((TouchItem.bIsPressed == true) && (TouchItem.FingerIndex == FingerIndex))
-//	{
-//		if (TouchItem.bIsPressed)
-//		{
-//			if (GetWorld() != nullptr)
-//			{
-//				UGameViewportClient* ViewportClient = GetWorld()->GetGameViewport();
-//				if (ViewportClient != nullptr)
-//				{
-//					FVector MoveDelta = Location - TouchItem.Location;
-//					FVector2D ScreenSize;
-//					ViewportClient->GetViewportSize(ScreenSize);
-//					FVector2D ScaledDelta = FVector2D(MoveDelta.X, MoveDelta.Y) / ScreenSize;
-//					if (FMath::Abs(ScaledDelta.X) >= 4.0 / ScreenSize.X)
-//					{
-//						TouchItem.bMoved = true;
-//						float Value = ScaledDelta.X * BaseTurnRate;
-//						AddControllerYawInput(Value);
-//					}
-//					if (FMath::Abs(ScaledDelta.Y) >= 4.0 / ScreenSize.Y)
-//					{
-//						TouchItem.bMoved = true;
-//						float Value = ScaledDelta.Y * BaseTurnRate;
-//						AddControllerPitchInput(Value);
-//					}
-//					TouchItem.Location = Location;
-//				}
-//				TouchItem.Location = Location;
-//			}
-//		}
-//	}
-//}
-
 void AEcdysisCharacter::MoveForward(float Value)
 {
 	if (Value != 0.0f)
@@ -548,14 +645,19 @@ void AEcdysisCharacter::MoveForward(float Value)
 		// add movement in that direction
 		AddMovementInput(GetActorForwardVector(), Value);
 	}
+	else
+	{
+		StopSprint();
+	}
 }
+
 
 void AEcdysisCharacter::MoveRight(float Value)
 {
 	if (Value != 0.0f)
 	{
 		// add movement in that direction
-		AddMovementInput(GetActorRightVector(), Value);
+		AddMovementInput(GetActorRightVector(), Value * currentStrafeSpeedModifier);
 	}
 }
 
