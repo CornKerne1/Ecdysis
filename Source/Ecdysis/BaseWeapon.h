@@ -3,41 +3,53 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "EcdysisCharacter.h"
 #include "GameFramework/Actor.h"
 #include "BaseInteractable.h"
 #include "BaseWeapon.generated.h"
 
-UCLASS()
-class ECDYSIS_API ABaseWeapon : public ABaseInteractable
+USTRUCT(BlueprintType)
+struct FIKProperties
 {
 	GENERATED_BODY()
 
-		/** Gun mesh: 1st person view (seen only by self) */
-	UPROPERTY(VisibleDefaultsOnly, Category = Mesh)
-	USkeletalMeshComponent* FP_Gun;
-	/** Location on gun mesh where projectiles should spawn. */
-	UPROPERTY(VisibleDefaultsOnly, Category = Mesh)
-	USceneComponent* FP_MuzzleLocation;
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
+	class UAnimSequence* AnimPose;
 
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
+	float AnimOffset = 15.f;
+
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
+	FTransform CustomOffsetTransform;
+
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
+	FVector RElbowModifier;
+
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
+	FVector LElbowModifier;
+};
+
+UCLASS(Abstract)
+class ECDYSIS_API ABaseWeapon : public ABaseInteractable
+{
+	GENERATED_BODY()
 	
 public:	
 	// Sets default values for this actor's properties
 	ABaseWeapon();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Weapon_AmmoReserve)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category ="Weapon_AmmoReserve")
 	int currentAmmo;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Weapon_AmmoReserve)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon_AmmoReserve")
 	int maxAmmo;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Weapon_Ammo)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon_Ammo")
 	int currentMagAmount;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Weapon_Ammo)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon_Ammo")
 	int maxMagCapacity;	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Weapon_Reload)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon_Reload")
 	float reloadTime;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Weapon_Firing)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon_Firing")
 	UAnimMontage* FireAnimation;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Weapon_Firing)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon_Firing")
 	USoundBase* FireSound;
 protected:
 	// Called when the game starts or when spawned
@@ -48,14 +60,27 @@ protected:
 	UPROPERTY()
 	bool roundChambered;
 	UPROPERTY(VisibleAnywhere, Category = Player)
-	class AEcdysisCharacter* player;
+	class ATrueFPCharacter* player;
 public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
 
+	UPROPERTY(EditAnywhere,BlueprintReadWrite, Category="Configurations")
+	FIKProperties IkProperties;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Category = "State")
+	class ATrueFPCharacter* CurrentOwner;
+	
+	UPROPERTY(VisibleAnywhere, Category = "Component")
+	class USceneComponent* Root;
+	UPROPERTY(VisibleAnywhere, Category = "Component")
+	USkeletalMeshComponent* Mesh;
+
+	UPROPERTY(EditAnywhere,BlueprintReadWrite, Category ="Configurations")
+	FTransform PlacementTransform;
+	
 	void FireWeapon();
 	void ReloadWeapon();
-	
-	UFUNCTION(BlueprintCallable)
-	void AddAndEquip(AActor* caller);
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="IK")
+	FTransform GetSightsWorldTransform() const;
+	virtual FTransform GetSightsWorldTransform_Implementation() const { return Mesh->GetSocketTransform(FName("Sights"));}
 };

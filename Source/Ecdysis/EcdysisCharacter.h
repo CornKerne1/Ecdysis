@@ -73,6 +73,8 @@ class AEcdysisCharacter : public ACharacter
 	float leanState;
 	UPROPERTY()
 	bool leanZoom;
+	UPROPERTY()
+	bool canLean;
 
 
 public:

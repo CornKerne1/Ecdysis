@@ -37,6 +37,6 @@ void ABaseInteractable::OnInteraction_Implementation(AActor* caller)
 
 void ABaseInteractable::EndFocus_Implementation(AActor* caller)
 {
-	//GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, TEXT("EndFocus"));
+	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, TEXT("EndFocus"));
 }
 

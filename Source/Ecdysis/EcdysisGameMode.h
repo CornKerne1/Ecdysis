@@ -13,6 +13,7 @@ class AEcdysisGameMode : public AGameModeBase
 
 public:
 	AEcdysisGameMode();
+	
 };
 
 

@@ -33,12 +33,6 @@ AEcdysisCharacter::AEcdysisCharacter()
 	BaseTurnRate = 45.f;
 	BaseLookUpRate = 45.f;
 
-	// Create a CameraComponent	
-	FirstPersonCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
-	FirstPersonCameraComponent->SetupAttachment(GetCapsuleComponent());
-	FirstPersonCameraComponent->SetRelativeLocation(FVector(-39.56f, 1.75f, 64.f)); // Position the camera
-	FirstPersonCameraComponent->bUsePawnControlRotation = true;
-
 	// Create a mesh component that will be used when being viewed from a '1st person' view (when controlling this pawn)
 	ArmsFpp = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("CharacterMesh1P"));
 	ArmsFpp->SetOnlyOwnerSee(true);
@@ -50,6 +44,14 @@ AEcdysisCharacter::AEcdysisCharacter()
 	// Default offset from the character location for projectiles to spawn
 	GunOffset = FVector(100.0f, 0.0f, 10.0f);
 
+	// Create a CameraComponent	
+	FirstPersonCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
+	FirstPersonCameraComponent->bUsePawnControlRotation = true;
+	FirstPersonCameraComponent->SetupAttachment(GetMesh(), FName("head"));
+	//FirstPersonCameraComponent->SetupAttachment(GetCapsuleComponent());
+	//->SetRelativeLocation(FVector(-39.56f, 1.75f, 64.f)); // Position the camera
+
+	
 	// Note: The ProjectileClass and the skeletal mesh/anim blueprints for Mesh1P, FP_Gun, and VR_Gun 
 	// are set in the derived blueprint asset named MyCharacter to avoid direct content references in C++.
 
@@ -61,6 +63,7 @@ AEcdysisCharacter::AEcdysisCharacter()
 	L_MotionController->SetupAttachment(RootComponent);
 
 	equippedWeapon = nullptr;
+	canLean = true;
 }
 
 bool AEcdysisCharacter::IsReloading()
@@ -98,57 +101,65 @@ void AEcdysisCharacter::Initialize()
 	{
 		cC->SetCapsuleHalfHeight(standHeight);
 	}
-	StartInteractionSystem();
+	//StartInteractionSystem();
 }
-void AEcdysisCharacter::StartInteractionSystem()
-{
-	GetWorldTimerManager().SetTimer(TimerHandle_Interaction, this, &AEcdysisCharacter::MainRayCast, .01f, true);
-}
-void AEcdysisCharacter::MainRayCast()
-{
-	FVector Loc;
-	FRotator Rot;
-	GetController()->GetPlayerViewPoint(Loc, Rot);
-	FVector Start = Loc;
-	FVector End = Start + (Rot.Vector() * rayCastRange);
-	FCollisionQueryParams TraceParams;
-	//DrawDebugLine(GetWorld(), FirstPersonCameraComponent->GetComponentLocation(), FirstPersonCameraComponent->GetComponentLocation() + FirstPersonCameraComponent->GetForwardVector() * rayCastRange, FColor::Blue, false, 1, 0, 1);
-	FHitResult outHit;
-	if (GetWorld()->LineTraceSingleByChannel(outHit, Start, End, ECC_Visibility, TraceParams))
-	{
-		if (auto Interactable = outHit.GetActor())
-		{
-			if (AActor::GetDistanceTo(Interactable) <= interactRange)
-			{
-				if (Interactable != currentInteractable)
-				{
-					if (currentInteractable)
-					{
-						if (auto* interface = Cast<IInteraction>(currentInteractable))
-						{
-							interface->Execute_EndFocus(currentInteractable, this);
-						}
-
-					}
-					if (auto* interface = Cast<IInteraction>(Interactable))
-					{
-						interface->Execute_OnFocus(Interactable, this);
-					}
-					currentInteractable = Interactable;
-				}
-			}
-		}
-		else
-			if (currentInteractable)
-			{
-				if (auto* interface = Cast<IInteraction>(currentInteractable))
-				{
-					interface->Execute_EndFocus(currentInteractable, this);
-				}
-			}
-		currentInteractable = nullptr;
-	}
-}
+//void AEcdysisCharacter::StartInteractionSystem()
+//{
+//	GetWorldTimerManager().SetTimer(TimerHandle_Interaction, this, &AEcdysisCharacter::MainRayCast, .01f, true);
+//}
+//void AEcdysisCharacter::MainRayCast()
+//{
+//	FVector Loc;
+//	FRotator Rot;
+//	GetController()->GetPlayerViewPoint(Loc, Rot);
+//	FVector Start = Loc;
+//	FVector End = Start + (Rot.Vector() * rayCastRange);
+//	FCollisionQueryParams TraceParams;
+//	//DrawDebugLine(GetWorld(), FirstPersonCameraComponent->GetComponentLocation(), FirstPersonCameraComponent->GetComponentLocation() + FirstPersonCameraComponent->GetForwardVector() * rayCastRange, FColor::Blue, false, 1, 0, 1);
+//	FHitResult outHit;
+//	if (GetWorld()->LineTraceSingleByChannel(outHit, Start, End, ECC_Visibility, TraceParams))
+//	{
+//		if (AActor::GetDistanceTo(outHit.GetActor()) <= interactRange)
+//		{
+//			if (auto Interactable = outHit.GetActor())
+//			{
+//				if (Interactable != currentInteractable)
+//				{
+//					if (currentInteractable)
+//					{
+//						if (auto* interface = Cast<IInteraction>(currentInteractable))
+//						{
+//							interface->Execute_EndFocus(currentInteractable, this);
+//						}
+//
+//					}
+//					if (auto* interface = Cast<IInteraction>(Interactable))
+//					{
+//						interface->Execute_OnFocus(Interactable, this);
+//					}
+//					currentInteractable = Interactable;
+//				}
+//				else
+//				{
+//					currentInteractable = Interactable;
+//				}
+//
+//			}
+//			else
+//			{
+//				if (currentInteractable)
+//				{
+//					if (auto* interface = Cast<IInteraction>(currentInteractable))
+//					{
+//						interface->Execute_EndFocus(currentInteractable, this);
+//					}
+//				}
+//			}
+//			currentInteractable = nullptr;
+//		}
+//		currentInteractable = nullptr;
+//	}
+//}
 //////////////////////////////////////////////////////////////////////////
 // Input
 
@@ -281,6 +292,8 @@ void AEcdysisCharacter::Sprint()
 		case 0://Walk
 			GetCharacterMovement()->MaxWalkSpeed = walkSpeed;
 			GetWorldTimerManager().ClearTimer(TimerHandle_HandleStaminaDecrease);
+			currentStrafeSpeedModifier = strafeSpeedModifier;
+			canLean = true;
 			if (!CheckStamina() || currentStamina < maxStamina)
 			{
 				GetWorldTimerManager().SetTimer(TimerHandle_HandleStaminaIncrease, this, &AEcdysisCharacter::IncreaseStamina, 1, true);
@@ -293,6 +306,8 @@ void AEcdysisCharacter::Sprint()
 			}
 			if (CheckStamina() && currentStamina > 0.75f * maxStamina)
 			{
+				canLean = false;
+				currentStrafeSpeedModifier = 0.3f;
 				GetCharacterMovement()->MaxWalkSpeed = supersprintSpeed;
 				staminaReduceRate = staminaReduceRateSupersprint;
 				ResetAndStartTimer(TimerHandle_HandleStaminaDecrease, 1, true);
@@ -307,6 +322,8 @@ void AEcdysisCharacter::Sprint()
 			}
 			if (CheckStamina())
 			{
+				canLean = false;
+				currentStrafeSpeedModifier = 0.4f;
 				GetCharacterMovement()->MaxWalkSpeed = sprintSpeed;
 				staminaReduceRate = staminaReduceRateSprint;
 				ResetAndStartTimer(TimerHandle_HandleStaminaDecrease, 1, true);
@@ -471,51 +488,57 @@ void AEcdysisCharacter::OnLean(float Val)
 {
 	leanState = Val;
 	float leanValue = GetControlRotation().Roll;
-	if (leanState != 0)
+	if (!canLean)
 	{
-		if (leanValue + leanState <= 20.0f || leanValue + leanState >= 340.0f)
-		{
-			AddControllerRollInput(leanState / 2.0f);
-			if (leanState > 0.0f)
-			{
-				AddActorLocalOffset(FVector(0.0f, 2.0f, 0.0f));//Right
-			}
-			else
-			{
-				AddActorLocalOffset(FVector(0.0f, -2.0f, 0.0f));//Left
-			}
-		}
+		leanState = 0;
 	}
-	else
-	{
-		if (leanValue != 0.0f)
+
+		if (leanState != 0)
 		{
-			if (leanValue >= 340.0f)
+			if (leanValue + leanState <= 20.0f || leanValue + leanState >= 340.0f)
 			{
-				if (leanValue <= 359.0f)
+				AddControllerRollInput(leanState / 2.0f);
+				if (leanState > 0.0f)
 				{
-					AddControllerRollInput(1.0f / 2.0f);
-					AddActorLocalOffset(FVector(0.0f, 2.0f, 0.0f));
+					AddActorLocalOffset(FVector(0.0f, 2.0f, 0.0f));//Right
 				}
 				else
 				{
-					AddControllerRollInput(360.0f - leanValue);
-				}
-			}
-			else if (leanValue <= 20.0f)
-			{
-				if (leanValue >= 1.0f)
-				{
-					AddControllerRollInput(-1.0f / 2.0f);
-					AddActorLocalOffset(FVector(0.0f, -2.0f, 0.0f));
-				}
-				else
-				{
-					AddControllerRollInput(0.0f - leanValue);
+					AddActorLocalOffset(FVector(0.0f, -2.0f, 0.0f));//Left
 				}
 			}
 		}
-	}
+		else
+		{
+			if (leanValue != 0.0f)
+			{
+				if (leanValue >= 340.0f)
+				{
+					if (leanValue <= 359.0f)
+					{
+						AddControllerRollInput(1.0f / 2.0f);
+						AddActorLocalOffset(FVector(0.0f, 2.0f, 0.0f));
+					}
+					else
+					{
+						AddControllerRollInput(360.0f - leanValue);
+					}
+				}
+				else if (leanValue <= 20.0f)
+				{
+					if (leanValue >= 1.0f)
+					{
+						AddControllerRollInput(-1.0f / 2.0f);
+						AddActorLocalOffset(FVector(0.0f, -2.0f, 0.0f));
+					}
+					else
+					{
+						AddControllerRollInput(0.0f - leanValue);
+					}
+				}
+			}
+		}
+
 
 }
 
@@ -657,7 +680,7 @@ void AEcdysisCharacter::MoveRight(float Value)
 	if (Value != 0.0f)
 	{
 		// add movement in that direction
-		AddMovementInput(GetActorRightVector(), Value * currentStrafeSpeedModifier);
+		AddMovementInput(GetActorRightVector(), (Value * currentStrafeSpeedModifier));
 	}
 }
 

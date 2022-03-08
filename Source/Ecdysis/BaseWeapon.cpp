@@ -12,20 +12,14 @@
 ABaseWeapon::ABaseWeapon()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
+	
+	SetReplicates(true);
 
-	// Create a gun mesh component
-	FP_Gun = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FP_Gun"));
-	FP_Gun->SetOnlyOwnerSee(false);			// otherwise won't be visible in the multiplayer
-	FP_Gun->bCastDynamicShadow = false;
-	FP_Gun->CastShadow = false;
-	// FP_Gun->SetupAttachment(Mesh1P, TEXT("GripPoint"));
-	FP_Gun->SetupAttachment(RootComponent);
+	Mesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Mesh"));
 
-	FP_MuzzleLocation = CreateDefaultSubobject<USceneComponent>(TEXT("MuzzleLocation"));
-	FP_MuzzleLocation->SetupAttachment(FP_Gun);
-	FP_MuzzleLocation->SetRelativeLocation(FVector(0.2f, 48.4f, -10.6f));
-
+	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	//RootComponent = Root;
 	player = nullptr;
 }
 
@@ -33,6 +27,11 @@ ABaseWeapon::ABaseWeapon()
 void ABaseWeapon::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if(!CurrentOwner)
+	{
+		Mesh->SetVisibility(false);
+	}
 	
 }
 
@@ -45,12 +44,6 @@ void ABaseWeapon::ChamberRound()
 	}
 }
 
-// Called every frame
-void ABaseWeapon::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-
-}
 
 void ABaseWeapon::FireWeapon()
 {
@@ -65,7 +58,7 @@ void ABaseWeapon::FireWeapon()
 			{
 				UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
 			}
-			player->PlayAnimationMontage(FireAnimation);
+			//player->PlayAnimationMontage(FireAnimation);
 			ChamberRound();
 		}
 		else
@@ -91,15 +84,6 @@ void ABaseWeapon::ReloadWeapon()
 			currentMagAmount += currentAmmo;
 			currentAmmo = 0;
 		}
-	}
-}
-
-void ABaseWeapon::AddAndEquip(AActor* caller)
-{
-	if (auto p = Cast<AEcdysisCharacter>(caller))
-	{
-		player = p;
-		player->equippedWeapon = this;
 	}
 }
 
