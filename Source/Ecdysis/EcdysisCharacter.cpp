@@ -47,9 +47,8 @@ AEcdysisCharacter::AEcdysisCharacter()
 	// Create a CameraComponent	
 	FirstPersonCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
 	FirstPersonCameraComponent->bUsePawnControlRotation = true;
-	FirstPersonCameraComponent->SetupAttachment(GetMesh(), FName("head"));
-	//FirstPersonCameraComponent->SetupAttachment(GetCapsuleComponent());
-	//->SetRelativeLocation(FVector(-39.56f, 1.75f, 64.f)); // Position the camera
+	FirstPersonCameraComponent->SetupAttachment(GetCapsuleComponent());
+	FirstPersonCameraComponent->SetRelativeLocation(FVector(-39.56f, 1.75f, 64.f)); // Position the camera
 
 	
 	// Note: The ProjectileClass and the skeletal mesh/anim blueprints for Mesh1P, FP_Gun, and VR_Gun 

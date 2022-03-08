@@ -57,6 +57,7 @@ void ATrueFPCharacter::Initialize()
 {
 	currentStamina = maxStamina;
 	currentStrafeSpeedModifier = strafeSpeedModifier;
+	canLean = true;
 	if (auto cam = this->Camera)
 	{
 		cam->SetFieldOfView(playerFOV);
@@ -198,6 +199,64 @@ void ATrueFPCharacter::StopSprint()
 		movementType = 2;
 		Sprint();
 	}
+}
+
+void ATrueFPCharacter::OnLean(float Val)
+{
+	leanState = Val;
+	float leanValue = GetControlRotation().Roll;
+	if (!canLean)
+	{
+		leanState = 0;
+	}
+
+	if (leanState != 0)
+	{
+		if (leanValue + leanState <= 20.0f || leanValue + leanState >= 340.0f)
+		{
+			AddControllerRollInput(leanState / 2.0f);
+			if (leanState > 0.0f)
+			{
+				AddActorLocalOffset(FVector(0.0f, 2.0f, 0.0f));//Right
+			}
+			else
+			{
+				AddActorLocalOffset(FVector(0.0f, -2.0f, 0.0f));//Left
+			}
+		}
+	}
+	else
+	{
+		if (leanValue != 0.0f)
+		{
+			if (leanValue >= 340.0f)
+			{
+				if (leanValue <= 359.0f)
+				{
+					AddControllerRollInput(1.0f / 2.0f);
+					AddActorLocalOffset(FVector(0.0f, 2.0f, 0.0f));
+				}
+				else
+				{
+					AddControllerRollInput(360.0f - leanValue);
+				}
+			}
+			else if (leanValue <= 20.0f)
+			{
+				if (leanValue >= 1.0f)
+				{
+					AddControllerRollInput(-1.0f / 2.0f);
+					AddActorLocalOffset(FVector(0.0f, -2.0f, 0.0f));
+				}
+				else
+				{
+					AddControllerRollInput(0.0f - leanValue);
+				}
+			}
+		}
+	}
+
+
 }
 
 bool ATrueFPCharacter::CheckStamina()
@@ -577,7 +636,7 @@ void ATrueFPCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	PlayerInputComponent->BindAxis("TurnRate", this, &ATrueFPCharacter::TurnAtRate);
 	PlayerInputComponent->BindAxis("LookUp", this, &APawn::AddControllerPitchInput);
 	PlayerInputComponent->BindAxis("LookUpRate", this, &ATrueFPCharacter::LookUpAtRate);
-	//PlayerInputComponent->BindAxis("Lean", this, &ATrueFPCharacter::OnLean);
+	PlayerInputComponent->BindAxis("Lean", this, &ATrueFPCharacter::OnLean);
 
 }
 

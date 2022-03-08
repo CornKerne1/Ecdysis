@@ -53,6 +53,8 @@ protected:
 	
 	void Sprint();
 	void StopSprint();
+
+	void OnLean(float Val);
 	
 	void OnPressADS();
 	void OnReleaseADS();	
@@ -178,6 +180,7 @@ public:
 	float crouchHeight;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay_Crouch)
 	float crouchZoomSpeed;
+	
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = Gameplay_Weapons)
 	class AActor* currentInteractable;
